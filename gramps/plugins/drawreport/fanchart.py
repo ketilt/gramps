@@ -50,7 +50,8 @@ from gramps.gen.plug.docgen import (FontStyle, ParagraphStyle, GraphicsStyle,
                                     FONT_SANS_SERIF, PARA_ALIGN_CENTER,
                                     IndexMark, INDEX_TYPE_TOC)
 from gramps.gen.plug.menu import (EnumeratedListOption, NumberOption,
-                                  PersonOption, BooleanOption)
+                                  PersonOption, BooleanOption,
+                                  PlaceColorOption)
 from gramps.gen.plug.report import Report
 from gramps.gen.plug.report import utils
 from gramps.gen.plug.report import MenuReportOptions
@@ -210,31 +211,16 @@ class FanChart(Report):
 
         self.place_style = [None] * 2**self.max_generations
 
-        # custom place colors with estimated description
-        self.place_colors = {
-            'Hå': (0,0,255),            #'blue',
-            'Time': (0,255,0),          #'green',
-            'Gjesdal': (0,155,0),       #'darkgreen',
-            'Klepp': (0,255,255),       #'cyan',
-            'Sola': (200,0,200),        #'magenta',
-            'Sandnes': (255,155,0),     #'orange',
-            'Høyland': (255,155,0),     #'orange',
-            'Stavanger': (225,125,0),   #'orange-ish',
-            'Bjerkreim': (255,0,0),     #'red',
-            'Heskestad': (255,100,100), #'dark pink',
-            'Helleland': (255,150,150), #'light pink',
-            'Eigersund': (155,0,0),     #'maroon',
-            'Sokndal': (155,155,155),   #'gray',
-            'Lund': (100,100,100),      #'gray50',
-            'Sirdal': (150,115,95),     #'brown',
-            'Valle': (255,255,0),       #'yellow',
-            'Bygland': (255,255,0),     #'yellow',
-            'Forsand': (175,140,50),    #'darkgoldenrod',
-            'Hjelmeland': (235,225,170),#'khaki',
-            'Suldal': (195,100,0),      #'darkorange',
-            'Vindafjord': (255,0,255),  #'purple',
-            'Tysvær': (185,50,185),      #
-        }
+        # convert the 'placecolors' string to a dictionary of names and colors
+        self.place_colors = {}
+        tmp = menu.get_option_by_name('place_color').get_value()
+        if tmp.find('\xb0') >= 0:
+            tmp = tmp.split('\xb0')
+            while len(tmp) > 1:
+                place = tmp.pop(0)
+                gid = tmp.pop(0)
+                color = tmp.pop(0)[1:]
+                self.place_colors[place] = tuple(c for c in bytes.fromhex(color))
 
     def apply_filter(self, person_handle, index):
         """traverse the ancestors recursively until either the end
@@ -384,9 +370,10 @@ class FanChart(Report):
             if birth_event and birth_event.place:
                 birth_place = self.database.get_place_from_handle(birth_event.place)
                 main_loc = get_main_location(self.database, birth_place)
+                full_placename = ", ".join(main_loc.values())
                 # check for match
                 for place, color in self.place_colors.items():
-                    if place in main_loc.values():
+                    if full_placename.find(place) > -1:
                         place_style = 'FC-Place-%s' % place
                         return place_style, color
 
@@ -829,6 +816,11 @@ class FanChartOptions(MenuReportOptions):
         stdoptions.add_living_people_option(menu, category_name)
 
         stdoptions.add_localization_option(menu, category_name)
+
+        category_name = _('Place Colors')
+        place_option = PlaceColorOption(category_name)
+        place_option.set_help(_('Colors to use for various family lines.'))
+        menu.add_option(category_name, "place_color", place_option)
 
     def make_default_style(self, default_style):
         """Make the default output style for the Fan Chart report."""
