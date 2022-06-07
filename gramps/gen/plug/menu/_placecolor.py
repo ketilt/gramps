@@ -47,7 +47,7 @@ class PlaceColorOption(Option):
             Example: "Fan Chart"
         :type label: string
         :param value: A set of places and colours.
-            Example: "place1 colour1 place2 colour2"
+            Example: "place1 id1 colour1 place2 id2 colour2"
         :type value: string
         :return: nothing
         """

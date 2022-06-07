@@ -47,7 +47,7 @@ class SurnameColorOption(Option):
             Example: "Family lines"
         :type label: string
         :param value: A set of surnames and colours.
-            Example: "surname1 id1 colour1 surname2 id2 colour2"
+            Example: "surname1 colour1 surname2 colour2"
         :type value: string
         :return: nothing
         """
