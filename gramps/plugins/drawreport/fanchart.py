@@ -218,9 +218,10 @@ class FanChart(Report):
             tmp = tmp.split('\xb0')
             while len(tmp) > 1:
                 place = tmp.pop(0)
-                gid = tmp.pop(0)
+                _ = tmp.pop(0)
                 color = tmp.pop(0)[1:]
-                self.place_colors[place] = tuple(c for c in bytes.fromhex(color))
+                self.place_colors[place] = tuple(
+                    c for c in bytes.fromhex(color))
 
     def apply_filter(self, person_handle, index):
         """traverse the ancestors recursively until either the end
@@ -366,9 +367,11 @@ class FanChart(Report):
         # get birth place
         birth_eventref = person.get_birth_ref()
         if birth_eventref and birth_eventref.ref:
-            birth_event = self.database.get_event_from_handle(birth_eventref.ref)
+            birth_event = self.database.get_event_from_handle(
+                birth_eventref.ref)
             if birth_event and birth_event.place:
-                birth_place = self.database.get_place_from_handle(birth_event.place)
+                birth_place = self.database.get_place_from_handle(
+                    birth_event.place)
                 main_loc = get_main_location(self.database, birth_place)
                 full_placename = ", ".join(main_loc.values())
                 # check for match
@@ -377,7 +380,7 @@ class FanChart(Report):
                         place_style = 'FC-Place-%s' % place
                         return place_style, color
 
-        return 'Unknown', (255,255,255)
+        return 'Unknown', (255, 255, 255)
 
     def get_info(self, person_handle, generation):
         """ get info about a person """
