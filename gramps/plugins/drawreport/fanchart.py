@@ -57,6 +57,7 @@ from gramps.gen.plug.report import MenuReportOptions
 from gramps.gen.plug.report import stdoptions
 from gramps.gen.config import config
 from gramps.gen.utils.db import get_birth_or_fallback, get_death_or_fallback
+from gramps.gen.utils.location import get_main_location
 from gramps.gen.lib import EventType, Date
 from gramps.gen.proxy import CacheProxyDb
 from gramps.gen.display.name import displayer as _nd
@@ -73,6 +74,7 @@ OVERHANG = 3
 
 BACKGROUND_WHITE = 0
 BACKGROUND_GEN = 1
+BACKGROUND_PLACE = 2
 
 RADIAL_UPRIGHT = 0
 RADIAL_ROUNDABOUT = 1
@@ -206,6 +208,34 @@ class FanChart(Report):
         self.map = [None] * 2**self.max_generations
         self.text = {}
 
+        self.place_style = [None] * 2**self.max_generations
+
+        # custom place colors with estimated description
+        self.place_colors = {
+            'Hå': (0,0,255),            #'blue',
+            'Time': (0,255,0),          #'green',
+            'Gjesdal': (0,155,0),       #'darkgreen',
+            'Klepp': (0,255,255),       #'cyan',
+            'Sola': (200,0,200),        #'magenta',
+            'Sandnes': (255,155,0),     #'orange',
+            'Høyland': (255,155,0),     #'orange',
+            'Stavanger': (225,125,0),   #'orange-ish',
+            'Bjerkreim': (255,0,0),     #'red',
+            'Heskestad': (255,100,100), #'dark pink',
+            'Helleland': (255,150,150), #'light pink',
+            'Eigersund': (155,0,0),     #'maroon',
+            'Sokndal': (155,155,155),   #'gray',
+            'Lund': (100,100,100),      #'gray50',
+            'Sirdal': (150,115,95),     #'brown',
+            'Valle': (255,255,0),       #'yellow',
+            'Bygland': (255,255,0),     #'yellow',
+            'Forsand': (175,140,50),    #'darkgoldenrod',
+            'Hjelmeland': (235,225,170),#'khaki',
+            'Suldal': (195,100,0),      #'darkorange',
+            'Vindafjord': (255,0,255),  #'purple',
+            'Tysvær': (185,50,185),      #
+        }
+
     def apply_filter(self, person_handle, index):
         """traverse the ancestors recursively until either the end
         of a line is found, or until we reach the maximum number of
@@ -215,6 +245,7 @@ class FanChart(Report):
             return
         self.map[index-1] = person_handle
         self.text[index-1] = self.get_info(person_handle, log2(index))
+        self.place_style[index-1] = None
 
         person = self.database.get_person_from_handle(person_handle)
         family_handle = person.get_main_parents_family_handle()
@@ -319,7 +350,7 @@ class FanChart(Report):
             title, max_circular, block_size, self.same_style,
             not self.same_style,
             # if same_style, use default generated colors
-            self.background == BACKGROUND_WHITE)
+            self.background)
 
         if optimized_style_sheet:
             self.doc.set_style_sheet(optimized_style_sheet)
@@ -341,6 +372,25 @@ class FanChart(Report):
             self.draw_radial(_x_, _y_,
                              start_angle, max_angle, block_size, generation)
         self.doc.end_page()
+
+    def get_place_color(self, person):
+        """
+        Get the color associated to the place of birth of the person
+        """
+        # get birth place
+        birth_eventref = person.get_birth_ref()
+        if birth_eventref and birth_eventref.ref:
+            birth_event = self.database.get_event_from_handle(birth_eventref.ref)
+            if birth_event and birth_event.place:
+                birth_place = self.database.get_place_from_handle(birth_event.place)
+                main_loc = get_main_location(self.database, birth_place)
+                # check for match
+                for place, color in self.place_colors.items():
+                    if place in main_loc.values():
+                        place_style = 'FC-Place-%s' % place
+                        return place_style, color
+
+        return 'Unknown', (255,255,255)
 
     def get_info(self, person_handle, generation):
         """ get info about a person """
@@ -490,7 +540,7 @@ class FanChart(Report):
     def get_optimized_style_sheet(self, title, max_circular, block_size,
                                   map_style_from_single,
                                   map_paragraphs_colors_to_graphics,
-                                  make_background_white):
+                                  background_style):
         """
         returns an optimized (modified) style sheet which make fanchart
         look nicer
@@ -539,9 +589,23 @@ class FanChart(Report):
                     # set graphic colors to paragraph colors,
                     # while it's functionnaly
                     # the same for fanchart or make backgrounds white
-                    if make_background_white:
+                    segments = 2**generation
+
+                    # white background by default, override if requested
+                    if background_style == BACKGROUND_WHITE:
                         g_style.set_fill_color((255, 255, 255))
                         new_style_sheet.add_draw_style(gstyle_name, g_style)
+                    elif background_style == BACKGROUND_PLACE:
+                        # loop over all people in the generation
+                        for index in range(segments - 1, 2*segments - 1):
+                            if not self.map[index]:
+                                continue
+                            person = self.database.get_person_from_handle(
+                                self.map[index])
+                            place, color = self.get_place_color(person)
+                            g_style.set_fill_color(color)
+                            new_style_sheet.add_draw_style(place, g_style)
+                            self.place_style[index] = place
                     elif map_paragraphs_colors_to_graphics:
                         pstyle = new_style_sheet.get_paragraph_style(
                             pstyle_name)
@@ -551,8 +615,6 @@ class FanChart(Report):
                             new_style_sheet.add_draw_style(gstyle_name,
                                                            g_style)
 
-                    # adapt font size if too big
-                    segments = 2**generation
                     if generation < min(max_circular, self.max_generations):
                         # adpatation for circular fonts
                         rad1, rad2 = self.get_circular_radius(
@@ -626,7 +688,11 @@ class FanChart(Report):
         for index in range(segments - 1, 2*segments - 1):
             start_angle = end_angle
             end_angle = start_angle + delta
-            (_xc, _yc) = draw_wedge(self.doc, graphic_style, _x_, _y_, rad2,
+            # override graphic style if person has a place style
+            style = graphic_style
+            if self.place_style[index] is not None:
+                style = self.place_style[index]
+            (_xc, _yc) = draw_wedge(self.doc, style, _x_, _y_, rad2,
                                     start_angle, end_angle,
                                     self.map[index] or self.draw_empty, rad1)
             if self.map[index]:
@@ -667,7 +733,11 @@ class FanChart(Report):
         for index in range(segments - 1, 2*segments - 1):
             start_angle = end_angle
             end_angle = start_angle + delta
-            (_xc, _yc) = draw_wedge(self.doc, graphic_style, _x_, _y_, rad2,
+            # override graphic style if person has a place style
+            style = graphic_style
+            if self.place_style[index] is not None:
+                style = self.place_style[index]
+            (_xc, _yc) = draw_wedge(self.doc, style, _x_, _y_, rad2,
                                     start_angle, end_angle,
                                     self.map[index] or self.draw_empty, rad1)
             text_angle += delta
@@ -730,8 +800,9 @@ class FanChartOptions(MenuReportOptions):
         background = EnumeratedListOption(_('Background color'), BACKGROUND_GEN)
         background.add_item(BACKGROUND_WHITE, _('white'))
         background.add_item(BACKGROUND_GEN, _('generation dependent'))
-        background.set_help(_("Background color is either white or generation"
-                              " dependent"))
+        background.add_item(BACKGROUND_PLACE, _('place dependent'))
+        background.set_help(_("Background color is either white, generation"
+                              " dependent, or colored by place."))
         menu.add_option(category_name, "background", background)
 
         radial = EnumeratedListOption(_('Orientation of radial texts'),
