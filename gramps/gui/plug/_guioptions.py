@@ -1667,6 +1667,196 @@ class GuiSurnameColorOption(Gtk.Box):
         self.__option.disconnect(self.valuekey)
         self.__option = None
 
+
+#-------------------------------------------------------------------------
+#
+# GuiPlaceColorOption class
+#
+#-------------------------------------------------------------------------
+class GuiPlaceColorOption(Gtk.Box):
+    """
+    This class displays a widget that allows multiple places to be
+    selected from the database, and to assign a colour (not necessarily
+    unique) to each one.
+    """
+    def __init__(self, option, dbstate, uistate, track, override):
+        """
+        @param option: The option to display.
+        @type option: gen.plug.menu.PlaceColorOption
+        @return: nothing
+        """
+        Gtk.Box.__init__(self)
+        self.__option = option
+        self.__db = dbstate.get_database()
+        self.__dbstate = dbstate
+        self.__uistate = uistate
+        self.__track = track
+        item = uistate.gwm.get_item_from_track(track)
+        self.__parent = item[0].window if isinstance(item, list) \
+            else item.window
+
+        self.set_size_request(150, 150)
+
+        # This will get populated the first time the dialog is run,
+        # and used each time after.
+        self.places = {}  # list of places and count
+
+        self.__model = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_STRING, GObject.TYPE_STRING)
+        self.__tree_view = Gtk.TreeView(model=self.__model)
+        self.__tree_view.connect('row-activated', self.__row_clicked)
+        col1 = Gtk.TreeViewColumn(_('Place'), Gtk.CellRendererText(), text=0)
+        col2 = Gtk.TreeViewColumn(_('ID'), Gtk.CellRendererText(), text=1)
+        col3 = Gtk.TreeViewColumn(_('Color'), Gtk.CellRendererText(), text=2)
+        col1.set_resizable(True)
+        col2.set_resizable(True)
+        col3.set_resizable(True)
+        col1.set_sort_column_id(0)
+        col1.set_sizing(Gtk.TreeViewColumnSizing.AUTOSIZE)
+        col2.set_sizing(Gtk.TreeViewColumnSizing.AUTOSIZE)
+        col3.set_sizing(Gtk.TreeViewColumnSizing.AUTOSIZE)
+        self.__tree_view.append_column(col1)
+        self.__tree_view.append_column(col2)
+        self.__tree_view.append_column(col3)
+        self.scrolled_window = Gtk.ScrolledWindow()
+        self.scrolled_window.add(self.__tree_view)
+        self.scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                        Gtk.PolicyType.AUTOMATIC)
+        self.scrolled_window.set_shadow_type(Gtk.ShadowType.OUT)
+        self.pack_start(self.scrolled_window, True, True, 0)
+
+        self.add_place = widgets.SimpleButton('list-add',
+                                                self.__add_clicked)
+        self.del_place = widgets.SimpleButton('list-remove',
+                                                self.__del_clicked)
+        self.vbbox = Gtk.ButtonBox(orientation=Gtk.Orientation.VERTICAL)
+        self.vbbox.add(self.add_place)
+        self.vbbox.add(self.del_place)
+        self.vbbox.set_layout(Gtk.ButtonBoxStyle.SPREAD)
+        self.pack_end(self.vbbox, False, False, 0)
+
+        self.__value_changed()
+
+        self.valuekey = self.__option.connect('value-changed',
+                                              self.__value_changed)
+
+        self.__tree_view.set_tooltip_text(self.__option.get_help())
+
+    def __add_clicked(self, obj): # IGNORE:W0613 - obj is unused
+        """
+        Handle the add place button.
+        """
+        # places we already have must be excluded
+        # so we don't list them multiple times
+        skip_list = set()
+        tree_iter = self.__model.get_iter_first()
+        while tree_iter:
+            gid = self.__model.get_value(tree_iter, 1) # get the GID in col. #1
+            place = self.__db.get_place_from_gramps_id(gid)
+            skip_list.add(place.get_handle())
+            tree_iter = self.__model.iter_next(tree_iter)
+
+        select_class = SelectorFactory('Place')
+        sel = select_class(self.__dbstate, self.__uistate,
+                           self.__track, skip=skip_list)
+        place = sel.run()
+        if place:
+            place_name = _pd.display(self.__db, place)
+            gid = place.get_gramps_id()
+            self.__model.append([place_name, gid, "#ffffff"])
+            self.__update_value()
+
+    def __del_clicked(self, obj): # IGNORE:W0613 - obj is unused
+        """
+        Handle the delete place button.
+        """
+        (path, column) = self.__tree_view.get_cursor()
+        if path:
+            tree_iter = self.__model.get_iter(path)
+            self.__model.remove(tree_iter)
+            self.__update_value()
+
+    def __row_clicked(self, treeview, path, column):
+        """
+        Handle the case of a row being clicked on.
+        """
+        # get the place and colour value for this family
+        tree_iter = self.__model.get_iter(path)
+        place = self.__model.get_value(tree_iter, 0)
+        gid = self.__model.get_value(tree_iter, 1)
+        rgba = Gdk.RGBA()
+        rgba.parse(self.__model.get_value(tree_iter, 2))
+
+        title = _('Select color for %s') % place
+        colour_dialog = Gtk.ColorChooserDialog(title=title,
+                                               transient_for=self.__parent)
+        colour_dialog.set_rgba(rgba)
+        response = colour_dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            rgba = colour_dialog.get_rgba()
+            colour_name = '#%02x%02x%02x' % (int(rgba.red * 255),
+                                             int(rgba.green * 255),
+                                             int(rgba.blue * 255))
+            self.__model.set_value(tree_iter, 2, colour_name)
+
+        colour_dialog.destroy()
+        self.__update_value()
+
+    def __update_value(self):
+        """
+        Parse the object and return.
+        """
+        place_colours = ''
+        tree_iter = self.__model.get_iter_first()
+        while tree_iter:
+            place = self.__model.get_value(tree_iter, 0)
+            gid = self.__model.get_value(tree_iter, 1)
+            colour = self.__model.get_value(tree_iter, 2)
+            place_colours += place + '\xb0' + gid + '\xb0' + colour + '\xb0'
+            tree_iter = self.__model.iter_next(tree_iter)
+        self.__option.set_value(place_colours)
+
+    def __value_changed(self):
+        """
+        Handle the change made programmatically
+        """
+        value = self.__option.get_value()
+
+        if not isinstance(value, str):
+            # Convert dictionary into a string
+            # (convienence so that programmers can
+            # set value using a dictionary)
+            value_str = ""
+
+            for name in value:
+                value_str += "%s\xb0%s\xb0" % (name, value[name])
+
+            value = value_str
+
+            # Need to change __option value to be the string
+            self.__option.disable_signals()
+            self.__option.set_value(value)
+            self.__option.enable_signals()
+
+        # Remove all entries (the new values will REPLACE
+        # rather than APPEND)
+        self.__model.clear()
+
+        # populate the place/colour treeview
+        tmp = value.split('\xb0')
+        while len(tmp) > 2:
+            place = tmp.pop(0)
+            gid = tmp.pop(0)
+            colour = tmp.pop(0)
+            self.__model.append([place, gid, colour])
+
+    def clean_up(self):
+        """
+        remove stuff that blocks garbage collection
+        """
+        self.__option.disconnect(self.valuekey)
+        self.__option = None
+
 #-------------------------------------------------------------------------
 #
 # GuiDestinationOption class
@@ -1968,6 +2158,7 @@ _OPTIONS = (
     (menu.StringOption, True, GuiStringOption),
     (menu.StyleOption, True, GuiStyleOption),
     (menu.SurnameColorOption, True, GuiSurnameColorOption),
+    (menu.PlaceColorOption, True, GuiPlaceColorOption),
     (menu.TextOption, True, GuiTextOption),
 
     # This entry must be last!

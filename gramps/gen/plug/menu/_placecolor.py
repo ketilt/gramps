@@ -20,7 +20,7 @@
 #
 
 """
-Option class representing color/surname mappings.
+Option class representing color/place mappings.
 """
 
 #-------------------------------------------------------------------------
@@ -32,22 +32,22 @@ from . import Option
 
 #-------------------------------------------------------------------------
 #
-# SurnameColorOption class
+# PlaceColorOption class
 #
 #-------------------------------------------------------------------------
-class SurnameColorOption(Option):
+class PlaceColorOption(Option):
     """
-    This class describes a widget that allows multiple surnames to be
+    This class describes a widget that allows multiple places to be
     selected from the database, and to assign a color (not necessarily
     unique) to each one.
     """
     def __init__(self, label):
         """
         :param label: A friendly label to be applied to this option.
-            Example: "Family lines"
+            Example: "Fan Chart"
         :type label: string
-        :param value: A set of surnames and colours.
-            Example: "surname1 id1 colour1 surname2 id2 colour2"
+        :param value: A set of places and colours.
+            Example: "place1 colour1 place2 colour2"
         :type value: string
         :return: nothing
         """
